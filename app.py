@@ -8,11 +8,17 @@ That is the point: you will add both, lesson by lesson, in Units 2 and 3.
 import sqlite3
 
 from flask import Flask, g, jsonify, request
+from werkzeug.security import generate_password_hash, check_password_hash
 
 DATABASE = "recipes.db"
 
 app = Flask(__name__)
 
+def hash_password(plain_password: str) -> str:
+    return generate_password_hash(plain_password, method="pbkdf2:sha256")
+
+def verify_password(stored_hash: str, candidate_password: str) -> bool:
+    return check_password_hash(stored_hash, candidate_password)
 
 def get_db():
     if "db" not in g:
@@ -21,6 +27,33 @@ def get_db():
         g.db.execute("PRAGMA foreign_keys = ON")
     return g.db
 
+
+@app.post("/register")
+def register():
+    data = request.get_json() or {}
+
+    username = data.get("username")
+    password = data.get("password")
+
+    if not username or not password:
+        return jsonify({"error": "username and password are required"}), 400
+
+    password_hash = hash_password(password)
+
+    db = get_db()
+    try:
+        cursor = db.execute(
+            "INSERT INTO users (username, password_hash) VALUES (?, ?)",
+            (username, password_hash),
+        )
+        db.commit()
+    except sqlite3.IntegrityError:
+        # this happens when UNIQUE(username) is violated
+        return jsonify({"error": "username already exists"}), 409
+
+    new_user_id = cursor.lastrowid
+
+    return jsonify({"id": new_user_id, "username": username}), 201
 
 @app.teardown_appcontext
 def close_db(exception):
