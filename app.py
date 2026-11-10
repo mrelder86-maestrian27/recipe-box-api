@@ -55,6 +55,35 @@ def register():
 
     return jsonify({"id": new_user_id, "username": username}), 201
 
+@app.post("/login")
+def login():
+    data = request.get_json() or {}
+
+    username = data.get("username")
+    password = data.get("password")
+
+    if username is None or password is None:
+        return jsonify({"error": "username and password are required"}), 400
+
+    db = get_db()
+    user = db.execute(
+        "SELECT id, username, password_hash FROM users WHERE username = ?",
+        (username,),
+    ).fetchone()
+
+    if user is None:
+        return jsonify({"error": "invalid credentials"}), 401
+
+    stored_hash = user["password_hash"]
+
+    if not verify_password(stored_hash, password):
+        return jsonify({"error": "invalid credentials"}), 401
+
+    return jsonify({
+        "id": user["id"],
+        "username": user["username"],
+    }), 200
+
 @app.teardown_appcontext
 def close_db(exception):
     db = g.pop("db", None)
